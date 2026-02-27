@@ -1,148 +1,258 @@
-# Zen Designer
+---
+license: apache-2.0
+language:
+- en
+tags:
+- zen
+- zen-lm
+- vision-language
+- multimodal
+- moe
+- ocr
+- document-understanding
+library_name: transformers
+pipeline_tag: image-text-to-text
+---
 
-Vision-language model for design tasks from [Zen LM](https://zenlm.org).
+<p align="center">
+  <img src="https://zenlm.org/logo.png" width="300"/>
+</p>
 
-Zen Designer is a multimodal model that understands and generates content from images, documents, and visual inputs. It excels at design-related workflows: layout analysis, visual QA, document parsing, GUI understanding, and image-conditioned generation.
+<h1 align="center">Zen Designer</h1>
 
-## Model Variants
+<p align="center">
+  <strong>235B vision-language model by Zen LM — images, video, documents, and spatial reasoning</strong>
+</p>
 
-| Model | Parameters | Context | Specialization |
-|-------|-----------|---------|---------------|
-| **zen-designer-3b** | 3B | 256K | Lightweight, edge |
-| **zen-designer-7b** | 7B | 256K | General purpose |
-| **zen-designer-30b** | 31B MoE | 256K | Frontier design tasks |
+<p align="center">
+  🤗 <a href="https://huggingface.co/zenlm/zen-designer-235b-a22b-instruct">HuggingFace</a> &nbsp;|&nbsp;
+  📖 <a href="https://zenlm.org">Docs</a> &nbsp;|&nbsp;
+  💻 <a href="https://github.com/zenlm">GitHub</a>
+</p>
+
+---
+
+## Introduction
+
+**Zen Designer** is Zen LM's flagship vision-language model: 235B total parameters with 22B active via Mixture of Experts (MoE). It delivers comprehensive visual understanding — images, video, documents, charts, and GUIs — combined with state-of-the-art language capabilities.
+
+Two variants are available:
+
+- **instruct**: optimized for direct visual question answering and task completion
+- **thinking**: extended chain-of-thought reasoning for complex visual analysis
+
+## Model Family
+
+| Model | Type | Context | Description |
+|-------|------|---------|-------------|
+| [zen-designer-235b-a22b-instruct](https://huggingface.co/zenlm/zen-designer-235b-a22b-instruct) | Instruct | 256K | Direct VLM tasks |
+| [zen-designer-235b-a22b-thinking](https://huggingface.co/zenlm/zen-designer-235b-a22b-thinking) | Thinking | 256K | Extended reasoning |
+
+## Model Specifications
+
+| Attribute | Value |
+|-----------|-------|
+| Total Parameters | 235B |
+| Active Parameters | 22B (MoE) |
+| Architecture | Dense vision encoder + MoE language decoder |
+| Context Window | 256K tokens (expandable to 1M) |
+| Languages | 100+ (OCR in 32 scripts) |
+| Video Support | Long-form video understanding |
+| License | Apache 2.0 |
 
 ## Key Capabilities
 
-### Document Understanding
-- Multi-language OCR (32+ languages)
-- Table, chart, and formula extraction
-- Handwriting recognition
-- Multi-page document parsing
+### Visual Understanding
+- Detailed image analysis and description
+- Video understanding with temporal reasoning
+- Document parsing: PDFs, invoices, forms, tables, charts
+- OCR across 32 languages and writing systems
 
-### Visual Grounding
-- Precise object detection with absolute coordinates
-- Element pointing, counting, and localization
-- JSON-formatted bounding box output
+### Spatial and Structural Reasoning
+- 2D and 3D spatial grounding
+- Bounding box prediction
+- GUI element recognition and navigation
+- Code generation from UI screenshots (HTML/CSS/JS)
 
-### Video Understanding
-- Long-form video analysis (hours-length content)
-- Temporal event localization
-- Dynamic frame rate processing
-
-### Agent / GUI Tasks
-- Desktop and mobile screen understanding
-- UI element recognition and interaction planning
-- ScreenSpot Pro benchmark support
+### Agentic Vision
+- Web navigation with visual context
+- GUI interaction and automation
+- Computer use workflows
+- Diagram comprehension (Draw.io, flowcharts, schematics)
 
 ## Quick Start
 
-### Requirements
+### Install
 
-```
-python>=3.9
-transformers>=4.37.0
+```bash
+pip install transformers torch accelerate
 ```
 
 ### Image Understanding
 
 ```python
-from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoModelForVision2Seq, AutoProcessor
+import torch
 from PIL import Image
-import requests
 
-model_id = "zenlm/zen-designer-7b"
-processor = AutoProcessor.from_pretrained(model_id)
-model = AutoModelForVision2Seq.from_pretrained(model_id, device_map="auto")
+model_name = "zenlm/zen-designer-235b-a22b-instruct"
 
-image = Image.open(requests.get("https://example.com/design.png", stream=True).raw)
+processor = AutoProcessor.from_pretrained(model_name)
+model = AutoModelForVision2Seq.from_pretrained(
+    model_name,
+    torch_dtype=torch.bfloat16,
+    device_map="auto"
+)
+
+image = Image.open("document.png")
 
 messages = [
     {
         "role": "user",
         "content": [
-            {"type": "image", "image": image},
-            {"type": "text", "text": "Describe the layout and design elements in this image."},
-        ],
+            {"type": "image"},
+            {"type": "text", "text": "Extract all text and data from this document in structured format."}
+        ]
     }
 ]
 
-inputs = processor.apply_chat_template(messages, return_tensors="pt").to(model.device)
-outputs = model.generate(**inputs, max_new_tokens=512)
-print(processor.decode(outputs[0], skip_special_tokens=True))
-```
+text = processor.apply_chat_template(messages, add_generation_prompt=True)
+inputs = processor(text=text, images=image, return_tensors="pt").to(model.device)
 
-### Document Parsing
+with torch.no_grad():
+    generated_ids = model.generate(**inputs, max_new_tokens=2048)
 
-```python
-messages = [
-    {
-        "role": "user",
-        "content": [
-            {"type": "image", "image": document_image},
-            {"type": "text", "text": "Extract all tables from this document and format as JSON."},
-        ],
-    }
-]
-```
-
-### Visual Grounding
-
-```python
-messages = [
-    {
-        "role": "user",
-        "content": [
-            {"type": "image", "image": ui_screenshot},
-            {"type": "text", "text": "Locate the 'Submit' button. Return bounding box as JSON."},
-        ],
-    }
-]
-# Returns: {"bbox": [x1, y1, x2, y2], "label": "Submit button"}
+response = processor.decode(generated_ids[0], skip_special_tokens=True)
+print(response)
 ```
 
 ### Video Understanding
 
 ```python
-from zen_designer import load_video
+from transformers import AutoModelForVision2Seq, AutoProcessor
+import torch
 
-frames = load_video("presentation.mp4", fps=1)
+model_name = "zenlm/zen-designer-235b-a22b-instruct"
+
+processor = AutoProcessor.from_pretrained(model_name)
+model = AutoModelForVision2Seq.from_pretrained(
+    model_name,
+    torch_dtype=torch.bfloat16,
+    device_map="auto"
+)
+
 messages = [
     {
         "role": "user",
-        "content": frames + [{"type": "text", "text": "Summarize the key design decisions shown."}],
+        "content": [
+            {"type": "video", "video": "path/to/video.mp4", "fps": 2},
+            {"type": "text", "text": "Describe what happens in this video, step by step."}
+        ]
     }
 ]
+
+text = processor.apply_chat_template(messages, add_generation_prompt=True)
+inputs = processor(text=text, return_tensors="pt").to(model.device)
+
+with torch.no_grad():
+    generated_ids = model.generate(**inputs, max_new_tokens=1024)
+
+response = processor.decode(generated_ids[0], skip_special_tokens=True)
+print(response)
 ```
 
-## Model Architecture
+### Extended Thinking (Complex Tasks)
 
-- Dual-path vision encoder: window attention for local features + global attention
-- Dynamic resolution: adapts to input image dimensions
-- Dynamic FPS sampling: variable-rate video frame processing
-- Temporal position encoding for video understanding
-- Optimized with SwiGLU activations and RMSNorm
+```python
+from transformers import AutoModelForVision2Seq, AutoProcessor
+import torch
+from PIL import Image
+
+model_name = "zenlm/zen-designer-235b-a22b-thinking"
+
+processor = AutoProcessor.from_pretrained(model_name)
+model = AutoModelForVision2Seq.from_pretrained(
+    model_name,
+    torch_dtype=torch.bfloat16,
+    device_map="auto"
+)
+
+image = Image.open("math_problem.png")
+
+messages = [
+    {
+        "role": "user",
+        "content": [
+            {"type": "image"},
+            {"type": "text", "text": "Solve this problem step by step, showing your reasoning."}
+        ]
+    }
+]
+
+text = processor.apply_chat_template(messages, add_generation_prompt=True)
+inputs = processor(text=text, images=image, return_tensors="pt").to(model.device)
+
+with torch.no_grad():
+    generated_ids = model.generate(**inputs, max_new_tokens=8192)
+
+response = processor.decode(generated_ids[0], skip_special_tokens=True)
+print(response)
+```
 
 ## Performance Benchmarks
 
-| Benchmark | zen-designer-3b | zen-designer-7b | zen-designer-30b |
-|-----------|----------------|----------------|-----------------|
-| MMMU | 53.1 | 58.6 | 70.2 |
-| DocVQA | 93.9 | 95.7 | 96.4 |
-| InfoVQA | 77.1 | 82.6 | 87.3 |
-| MathVista | 62.3 | 68.2 | 74.8 |
-| ScreenSpot | 55.5 | 84.7 | 87.1 |
+| Benchmark | Score | Category |
+|-----------|-------|----------|
+| DocVQA | State-of-the-art | Document understanding |
+| ChartQA | State-of-the-art | Chart reasoning |
+| MMBench | Leading | Multimodal understanding |
+| OCRBench | Leading | OCR accuracy |
+| Video-MME | Leading | Video reasoning |
+| MMMU | Competitive | Multi-discipline QA |
 
-## Quantized Formats
+## Hardware Requirements
 
-GGUF, AWQ, and GPTQ quantizations available on [HuggingFace](https://huggingface.co/zenlm).
+| Setup | VRAM | Notes |
+|-------|------|-------|
+| Minimum (INT4) | 4x 24GB | Quantized inference |
+| Recommended (BF16) | 4x 80GB | Full precision |
+| Optimal | 8x 80GB | Maximum throughput |
 
-## Links
+## Deployment
 
-- Models: [huggingface.co/zenlm](https://huggingface.co/zenlm)
-- Agent framework: [github.com/zenlm/zen-agent](https://github.com/zenlm/zen-agent)
-- Docs: [zenlm.org](https://zenlm.org)
+```bash
+# vLLM (recommended for production)
+vllm serve zenlm/zen-designer-235b-a22b-instruct \
+    --tensor-parallel-size 4 \
+    --max-model-len 65536
+
+# SGLang
+python -m sglang.launch_server \
+    --model-path zenlm/zen-designer-235b-a22b-instruct \
+    --tp-size 4
+```
 
 ## License
 
-Apache 2.0 — Copyright 2024 Zen LM Authors
+Apache 2.0
+
+## Citation
+
+```bibtex
+@misc{zenlm2025zen-designer,
+    title={Zen Designer: 235B Vision-Language Model by Zen LM},
+    author={Hanzo AI and Zoo Labs Foundation},
+    year={2025},
+    publisher={HuggingFace},
+    howpublished={\url{https://huggingface.co/zenlm/zen-designer-235b-a22b-instruct}}
+}
+```
+
+---
+
+<p align="center">
+  <strong>Zen LM by Hanzo AI</strong> - Clarity Through Intelligence<br>
+  <a href="https://zenlm.org">zenlm.org</a> &nbsp;|&nbsp;
+  <a href="https://huggingface.co/zenlm">HuggingFace</a> &nbsp;|&nbsp;
+  <a href="https://github.com/zenlm">GitHub</a>
+</p>
